@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import pickle
-import os
+from PIL import Image
+import os , io , sys
 import jsonpickle
 import numpy as np
 import cv2
@@ -25,6 +26,36 @@ def fit_poly(img_shape, leftx, lefty, rightx, righty):
 	return left_fitx, right_fitx, ploty
 
 
+def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
+    # initialize the dimensions of the image to be resized and
+    # grab the image size
+    dim = None
+    (h, w) = image.shape[:2]
+
+    # if both the width and height are None, then return the
+    # original image
+    if width is None and height is None:
+        return image
+
+    # check to see if the width is None
+    if width is None:
+        # calculate the ratio of the height and construct the
+        # dimensions
+        r = height / float(h)
+        dim = (int(w * r), height)
+
+    # otherwise, the height is None
+    else:
+        # calculate the ratio of the width and construct the
+        # dimensions
+        r = width / float(w)
+        dim = (width, int(h * r))
+
+    # resize the image
+    resized = cv2.resize(image, dim, interpolation = inter)
+
+    # return the resized image
+    return resized
 
 # build app
 app = Flask(__name__)
@@ -39,11 +70,9 @@ def user_download():
     
     url = request.values.get('url')
     print(url)
-    alt = request.values.get('token')
-    print(alt)
+    # alt = request.values.get('token')
+    # print(alt)
     r = requests.get(url, allow_redirects = True)
-    url += "&token="
-    url += alt
 
     print(url)
     with open(image_path, 'wb') as img:
@@ -54,6 +83,13 @@ def user_download():
 
 
     image_ext = cv2.imread(image_path)
+    crop_img = image_ext[0:0+450, 0:800]
+    crop_img = image_resize(crop_img, height = 720, width = 1280)
+    initial_image = np.copy(image_ext)
+
+    # cv2.imshow('a', crop_img)
+
+    image_ext = crop_img
     initial_image = np.copy(image_ext)
 
     objp = np.zeros((6*9,3), np.float32)
@@ -150,14 +186,21 @@ def user_download():
     dir = ""
     if leftx[-1] - leftx[0] > rightx[-1] - rightx[0]:
         dir += "left"
-    elif leftx[-1] - leftx[0] > rightx[-1] - rightx[0]:
+    elif leftx[-1] - leftx[0] < rightx[-1] - rightx[0]:
         dir += "right"
     else:
         dir += "straight"
 
     final_prediction['result'] = dir
+    img = output_image_after_detecting
+    img = Image.fromarray(img.astype("uint8"))
+    rawBytes = io.BytesIO()
+    img.save(rawBytes, "JPEG")
+    rawBytes.seek(0)
+    img_base64 = base64.b64encode(rawBytes.read())
+    final_prediction['status'] = str(img_base64)
 
-    os.remove(image_path)
+    # os.remove(image_path)
     return jsonify(final_prediction)
 
 
